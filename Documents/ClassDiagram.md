@@ -1,99 +1,20 @@
 ```mermaid
 classDiagram
     class LogManager {
-        - static InternalLogger _logger
-        - static ILogWriter _defaultLogWriter
-        - static ILogWriter _customLogWriter
-        - static ILogPathGenerator _defaultLogPathGenerator
-        - static ILogPathGenerator _customLogPathGenerator
-        - static ILogFileNameGenerator _defaultLogFileNameGenerator
-        - static ILogFileNameGenerator _customLogFileNameGenerator
-        - static ILogCleaner _defaultLogCleaner
-        - static ILogCleaner _customLogCleaner
+        - static uint _retentionDays
+        - static ILogPathGenerator _LogPathGenerator
+        - static ILogFileNameGenerator _LogFileNameGenerator
+        - static ILogWriter _logWriter
+        - static ILogCleaner _logCleaner
         + event LogWritten
         + event LogWriteFailed
         + event CleanupSuccess
         + event CleanupFailed
-        + Initialize(ILogWriter writer, ILogPathGenerator pathGenerator, ILogFileNameGenerator fileNameGenerator, ILogCleaner logCleaner)
-        + ManualCleanup()
-        + WriteLogEntry(LogLevel level, string message, Exception? exception)
-    }
-
-    class ICustomLogger {
-        <<interface>>
-        + string LogDirectory
-        + string LogFileFormat
-        + string GenerateLogFileName(DateTime date)
-        + DateTime? GetDateFromFileName(string fileName)
-        + void WriteLogEntry(LogLevel level, string message, Exception? exception)
-        + event LogWritten
-        + event LogWriteFailed
-        + event CleanupSuccess
-        + event CleanupFailed
-    }
-
-    class InternalLogger {
-        - string logDirectory
-        - string logFileFormat
-        + string GenerateLogFileName(DateTime date)
-        + DateTime? GetDateFromFileName(string fileName)
-        + void WriteLogEntry(LogLevel level, string message, Exception? exception)
-        + event LogWritten
-        + event LogWriteFailed
-        + event CleanupSuccess
-        + event CleanupFailed
-    }
-
-    class ILogWriter {
-        <<interface>>
-        + void WriteLog(LogEntry logEntry)
-    }
-
-    class DefaultLogWriter {
-        + void WriteLog(LogEntry logEntry)
-    }
-
-    class CustomLogWriter {
-        + void WriteLog(LogEntry logEntry)
-    }
-
-    class ILogCleaner {
-        <<interface>>
-        + void Cleanup(int retentionDays)
-    }
-
-    class DefaultLogCleaner {
-        + void Cleanup(int retentionDays)
-    }
-
-    class CustomLogCleaner {
-        + void Cleanup(int retentionDays)
-    }
-
-    class ILogPathGenerator {
-        <<interface>>
-        + string GetLogPath(DateTime date)
-    }
-
-    class DefaultLogPathGenerator {
-        + string GetLogPath(DateTime date)
-    }
-
-    class CustomLogPathGenerator {
-        + string GetLogPath(DateTime date)
-    }
-
-    class ILogFileNameGenerator {
-        <<interface>>
-        + string GenerateLogFileName(DateTime date)
-    }
-
-    class DefaultLogFileNameGenerator {
-        + string GenerateLogFileName(DateTime date)
-    }
-
-    class CustomLogFileNameGenerator {
-        + string GenerateLogFileName(DateTime date)
+        + Initialize(ILogPathGenerator? pathGenerator, ILogFileNameGenerator? fileNameGenerator, ILogWriter? writer, ILogCleaner? logCleaner)
+        + WriteLogEntry(LogLevel level, string message, Exception? exception, int? eventId, Dictionary<string, object>? additionalData)
+        + Task WriteLogEntryAsync(LogLevel level, string message, Exception? exception, int? eventId, Dictionary<string, object>? additionalData)
+        + Cleanup()
+        + CleanupAsync()
     }
 
     class PathType {
@@ -102,11 +23,81 @@ classDiagram
         Absolute
     }
 
+    class ILogPathGenerator {
+        <<interface>>
+        + string GetLogPath(DateTime date)
+    }
+
+    class LogPathGenerator {
+        + LogPathGenerator()
+        + LogPathGenerator(PathType pathType, string path)
+        - string DefaultGenerator(DateTime date)
+        # virtual string GeneratorCore(DateTime date)
+        + string GetLogPath(DateTime date)
+    }
+
+    class ILogFileNameGenerator {
+        <<interface>>
+        + string GetLogFileName(DateTime date)
+    }
+
+    class LogFileNameGenerator {
+        - string DefaultGenerator(DateTime date)
+        # virtual string GeneratorCore(DateTime date)
+        + string GetLogFileName(DateTime date)
+    }
+
+    class ILogWriter {
+        <<interface>>
+        + Task WriteLogEntry(ILogEntry logEntry)
+        + event EventHandler<ILogEntry> LogWritten;
+        + event EventHandler<LogWriteFailedEventArgs> LogWriteFailed;
+    }
+
+    class JsonFileLogWriter {
+        + Task WriteLogEntry(ILogEntry logEntry)
+        + event EventHandler<ILogEntry> LogWritten;
+        + event EventHandler<LogWriteFailedEventArgs> LogWriteFailed;
+    }
+
+    class ILogCleaner {
+        <<interface>>
+        + uint RetentionDays
+        + Task Cleanup()
+        + event CleanupSuccess
+        + event CleanupFailed
+    }
+
+    class LogCleanerBase {
+        <<abstract>>
+        LogCleanerBase(ILogPathGenerator logPathGenerator, ILogFileNameGenerator logFileNameGenerator, uint? retentionDays)
+        + uint RetentionDays
+        + abstract Task Cleanup()
+        + event CleanupSuccess
+        + event CleanupFailed
+    }
+
+    class FileLogCleaner {
+        + override Task Cleanup()
+    }
+
+    class ILogEntry {
+        <<interface>>
+        + LogLevel Level
+        + string Message
+        + DateTime Timestamp
+        + Exception~nullable~ Exception
+        + int~nullable~ EventId
+        + IDictionary<string, object>? AdditionalData
+    }
+
     class LogEntry {
-        + LogLevel level
-        + string message
-        + Exception? exception
-        + DateTime timestamp
+        + LogLevel Level
+        + string Message
+        + DateTime Timestamp
+        + Exception~nullable~ Exception
+        + int~nullable~ EventId
+        + IDictionary<string, object>? AdditionalData
     }
 
     class LogLevel {
@@ -116,21 +107,17 @@ classDiagram
         Error
     }
 
-    LogManager ..> ILogWriter : uses
     LogManager ..> ILogPathGenerator : uses
     LogManager ..> ILogFileNameGenerator : uses
+    LogManager ..> ILogWriter : uses
     LogManager ..> ILogCleaner : uses
-    LogManager *-- InternalLogger : composition
-    ICustomLogger <|.. InternalLogger : implements
-    ILogWriter <|.. DefaultLogWriter : implements
-    ILogWriter <|.. CustomLogWriter : implements
-    ILogCleaner <|.. DefaultLogCleaner : implements
-    ILogCleaner <|.. CustomLogCleaner : implements
-    ILogPathGenerator <|.. DefaultLogPathGenerator : implements
-    ILogPathGenerator <|.. CustomLogPathGenerator : implements
-    ILogFileNameGenerator <|.. DefaultLogFileNameGenerator : implements
-    ILogFileNameGenerator <|.. CustomLogFileNameGenerator : implements
-    DefaultLogPathGenerator ..> PathType : uses
-    CustomLogPathGenerator ..> PathType : uses
+    ILogPathGenerator <|.. LogPathGenerator : implements
+    ILogFileNameGenerator <|.. LogFileNameGenerator : implements
+    ILogEntry <|.. LogEntry : implements
+    ILogWriter ..> ILogEntry : uses
+    ILogWriter <|.. JsonFileLogWriter : implements
+    ILogCleaner <|.. LogCleanerBase : implements
+    LogCleanerBase <|.. FileLogCleaner : inherits
+    LogPathGenerator ..> PathType : dependency
     LogEntry ..> LogLevel : contains
 ```
